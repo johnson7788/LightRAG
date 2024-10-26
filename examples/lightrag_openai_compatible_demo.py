@@ -15,12 +15,12 @@ async def llm_model_func(
     prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
     return await openai_complete_if_cache(
-        "solar-mini",
+        "glm-4-flash",
         prompt,
         system_prompt=system_prompt,
         history_messages=history_messages,
-        api_key=os.getenv("UPSTAGE_API_KEY"),
-        base_url="https://api.upstage.ai/v1/solar",
+        api_key=os.getenv("OPENAI_API_KEY"),
+        base_url="https://open.bigmodel.cn/api/paas/v4/",
         **kwargs,
     )
 
@@ -28,9 +28,9 @@ async def llm_model_func(
 async def embedding_func(texts: list[str]) -> np.ndarray:
     return await openai_embedding(
         texts,
-        model="solar-embedding-1-large-query",
-        api_key=os.getenv("UPSTAGE_API_KEY"),
-        base_url="https://api.upstage.ai/v1/solar",
+        model="m3e-base",
+        api_key=os.getenv("OPENAI_API_KEY"),
+        base_url="http://127.0.0.1:6303/v1",
     )
 
 
@@ -50,7 +50,7 @@ rag = LightRAG(
     working_dir=WORKING_DIR,
     llm_model_func=llm_model_func,
     embedding_func=EmbeddingFunc(
-        embedding_dim=4096, max_token_size=8192, func=embedding_func
+        embedding_dim=768, max_token_size=8192, func=embedding_func
     ),
 )
 
