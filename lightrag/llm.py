@@ -294,7 +294,7 @@ async def ollama_model_if_cache(
         if_cache_return = await hashing_kv.get_by_id(args_hash)
         if if_cache_return is not None:
             return if_cache_return["return"]
-
+    print(f"发送的ollama消息是: {messages}")
     response = await ollama_client.chat(model=model, messages=messages, **kwargs)
 
     result = response["message"]["content"]
@@ -560,7 +560,7 @@ async def ollama_embedding(texts: list[str], embed_model) -> np.ndarray:
     for text in texts:
         data = ollama.embeddings(model=embed_model, prompt=text)
         embed_text.append(data["embedding"])
-
+    print(f"嵌入{len(texts)}个文档完成")
     return embed_text
 
 class Model(BaseModel):

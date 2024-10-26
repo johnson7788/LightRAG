@@ -935,7 +935,6 @@ async def hybrid_query(
             text_chunks_db,
             query_param,
         )
-
     context = combine_contexts(high_level_context, low_level_context)
 
     if query_param.only_need_context:
