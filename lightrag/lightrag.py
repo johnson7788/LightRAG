@@ -111,7 +111,10 @@ class LightRAG:
         if not os.path.exists(self.working_dir):
             logger.info(f"Creating working directory {self.working_dir}")
             os.makedirs(self.working_dir)
-
+        # 处理进度
+        self.processing_indicator = self.key_string_value_json_storage_cls(
+            namespace="processing", global_config=asdict(self)
+        )
         self.full_docs = self.key_string_value_json_storage_cls(
             namespace="full_docs", global_config=asdict(self)
         )
@@ -157,11 +160,19 @@ class LightRAG:
             partial(self.llm_model_func, hashing_kv=self.llm_response_cache)
         )
 
-    def insert(self, string_or_strings):
+    def insert(self, string_or_strings, file_name=None):
+        """
+        :param string_or_strings: 要插入的数据
+        :param file_name: 文件名
+        """
         loop = always_get_an_event_loop()
-        return loop.run_until_complete(self.ainsert(string_or_strings))
+        return loop.run_until_complete(self.ainsert(string_or_strings,file_name))
 
-    async def ainsert(self, string_or_strings):
+    async def ainsert(self, string_or_strings, file_name=None):
+        """
+        :param string_or_strings: 要插入的数据
+        :param file_name: 文件名
+        """
         try:
             if isinstance(string_or_strings, str):
                 string_or_strings = [string_or_strings]
