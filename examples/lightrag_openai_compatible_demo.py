@@ -15,12 +15,12 @@ async def llm_model_func(
     prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
     return await openai_complete_if_cache(
-        "glm-4-flash",
+        "solar-mini",
         prompt,
         system_prompt=system_prompt,
         history_messages=history_messages,
-        api_key=os.getenv("OPENAI_API_KEY"),
-        base_url="https://open.bigmodel.cn/api/paas/v4/",
+        api_key=os.getenv("UPSTAGE_API_KEY"),
+        base_url="https://api.upstage.ai/v1/solar",
         **kwargs,
     )
 
@@ -28,10 +28,17 @@ async def llm_model_func(
 async def embedding_func(texts: list[str]) -> np.ndarray:
     return await openai_embedding(
         texts,
-        model="m3e-base",
-        api_key=os.getenv("OPENAI_API_KEY"),
-        base_url="http://127.0.0.1:6303/v1",
+        model="solar-embedding-1-large-query",
+        api_key=os.getenv("UPSTAGE_API_KEY"),
+        base_url="https://api.upstage.ai/v1/solar",
     )
+
+
+async def get_embedding_dim():
+    test_text = ["This is a test sentence."]
+    embedding = await embedding_func(test_text)
+    embedding_dim = embedding.shape[1]
+    return embedding_dim
 
 
 # function test
@@ -43,37 +50,59 @@ async def test_funcs():
     print("embedding_func: ", result)
 
 
-asyncio.run(test_funcs())
+# asyncio.run(test_funcs())
 
 
-rag = LightRAG(
-    working_dir=WORKING_DIR,
-    llm_model_func=llm_model_func,
-    embedding_func=EmbeddingFunc(
-        embedding_dim=768, max_token_size=8192, func=embedding_func
-    ),
-)
+async def main():
+    try:
+        embedding_dimension = await get_embedding_dim()
+        print(f"Detected embedding dimension: {embedding_dimension}")
+
+        rag = LightRAG(
+            working_dir=WORKING_DIR,
+            llm_model_func=llm_model_func,
+            embedding_func=EmbeddingFunc(
+                embedding_dim=embedding_dimension,
+                max_token_size=8192,
+                func=embedding_func,
+            ),
+        )
+
+        with open("./book.txt", "r", encoding="utf-8") as f:
+            rag.insert(f.read())
+
+        # Perform naive search
+        print(
+            rag.query(
+                "What are the top themes in this story?", param=QueryParam(mode="naive")
+            )
+        )
+
+        # Perform local search
+        print(
+            rag.query(
+                "What are the top themes in this story?", param=QueryParam(mode="local")
+            )
+        )
+
+        # Perform global search
+        print(
+            rag.query(
+                "What are the top themes in this story?",
+                param=QueryParam(mode="global"),
+            )
+        )
+
+        # Perform hybrid search
+        print(
+            rag.query(
+                "What are the top themes in this story?",
+                param=QueryParam(mode="hybrid"),
+            )
+        )
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
 
-with open("./book.txt", "r", encoding="utf-8") as f:
-    rag.insert(f.read())
-
-# Perform naive search
-print(
-    rag.query("What are the top themes in this story?", param=QueryParam(mode="naive"))
-)
-
-# Perform local search
-print(
-    rag.query("What are the top themes in this story?", param=QueryParam(mode="local"))
-)
-
-# Perform global search
-print(
-    rag.query("What are the top themes in this story?", param=QueryParam(mode="global"))
-)
-
-# Perform hybrid search
-print(
-    rag.query("What are the top themes in this story?", param=QueryParam(mode="hybrid"))
-)
+if __name__ == "__main__":
+    asyncio.run(main())
