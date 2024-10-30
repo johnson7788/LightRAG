@@ -165,19 +165,25 @@ class LightRAG:
             )
         )
 
-    def insert(self, string_or_strings, file_name=None):
+    def insert(self, string_or_strings, file_names=None):
         """
         :param string_or_strings: 要插入的数据
-        :param file_name: 文件名
+        :param file_name: str or list,文件名
         """
         loop = always_get_an_event_loop()
-        return loop.run_until_complete(self.ainsert(string_or_strings,file_name))
+        return loop.run_until_complete(self.ainsert(string_or_strings,file_names))
 
-    async def ainsert(self, string_or_strings, file_name=None):
+    async def ainsert(self, string_or_strings, file_names=None):
         """
         :param string_or_strings: 要插入的数据
-        :param file_name: 文件名
+        :param file_names: str or list,文件名
         """
+        if isinstance(string_or_strings, str) and not file_names:
+            file_names = ["doc-unknown"]
+        if isinstance(string_or_strings, list) and not file_names:
+            file_names = [f"doc-unknown" for i in range(len(string_or_strings))]
+        if isinstance(file_names, str):
+            file_names = [file_names]
         try:
             if isinstance(string_or_strings, str):
                 string_or_strings = [string_or_strings]
@@ -236,6 +242,9 @@ class LightRAG:
 
             await self.full_docs.upsert(new_docs)
             await self.text_chunks.upsert(inserting_chunks)
+            # 文件完成的记录
+            finished_docs = {name: "Done" for name in file_names}
+            await self.processing_indicator.upsert(finished_docs)
         finally:
             await self._insert_done()
 
@@ -249,6 +258,7 @@ class LightRAG:
             self.relationships_vdb,
             self.chunks_vdb,
             self.chunk_entity_relation_graph,
+            self.processing_indicator,
         ]:
             if storage_inst is None:
                 continue

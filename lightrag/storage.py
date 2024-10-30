@@ -54,6 +54,8 @@ class JsonKVStorage(BaseKVStorage):
 
     async def drop(self):
         self._data = {}
+    async def get_all(self):
+        return self._data
 
 
 @dataclass
