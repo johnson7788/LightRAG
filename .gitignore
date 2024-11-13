@@ -6,3 +6,6 @@ lightrag-dev/
 .idea/
 dist/
 .venv/
+examples/cache/
+examples/data
+examples/logs

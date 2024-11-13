@@ -6,13 +6,51 @@
 # @Desc  : pipq install tika
 
 import os
+import re
 import json
+import hashlib
+import os
+import pickle
+import asyncio
+from functools import wraps
 from lightrag.utils import xml_to_json
 from neo4j import GraphDatabase
+from firecrawl import FirecrawlApp   #pip install firecrawl-py
 import tika
 from tika import parser as tikaParser
 TIKA_SERVER_JAR = "file:////media/wac/backup/john/johnson/LightRAG/examples/tika-server.jar"
 os.environ['TIKA_SERVER_JAR'] = TIKA_SERVER_JAR
+
+class MyFirecrawl():
+    def __init__(self, api_key="EXAMPLE", api_url="http://127.0.0.1:3002"):
+        """
+        :param api_key: api key
+        :param api_url: api url, eg: https://api.firecrawl.dev
+        """
+        self.api_key = api_key
+        self.api_url = api_url
+        self.app = FirecrawlApp(api_key=api_key, api_url=api_url)
+
+    def craw_website(self, url):
+        """
+        :param url: website url, eg: https://my-ip.cc/zh-hans
+        """
+        crawl_status = self.app.crawl_url(
+            url,
+            params={
+                'maxDepth': 1,
+                'limit': 100,
+                'scrapeOptions': {'formats': ['markdown', 'html']}
+            },
+            poll_interval=30
+        )
+        return crawl_status
+    def scrape_website(self, url):
+        """
+        :param url: website url, eg: https://my-ip.cc/zh-hans
+        """
+        crape_result = self.app.scrape_url(url, params={'formats': ['markdown', 'html']})
+        return crape_result
 
 def read_file_content(file_path):
     assert os.path.exists(file_path), f"给定文件不存在: {file_path}"
@@ -132,3 +170,127 @@ def save_to_neo4j(data_dir, NEO4J_URI="bolt://localhost:7687", NEO4J_USERNAME="n
 
     finally:
         driver.close()
+
+
+def generate_hex_color(word):
+    # 使用MD5哈希来确保每个词语生成相同的哈希值
+    hash_object = hashlib.md5(word.encode())
+    # 取哈希的前6位作为颜色值，确保生成一个#RRGGBB格式的16进制颜色
+    hex_color = "#" + hash_object.hexdigest()[:6]
+    return hex_color
+
+
+def url_to_filename(url, content="", max_length=20):
+    """
+    将url和content转换成文件名称，url中截取10个字符，content中截取10个字符
+    content如果包含中文，也需要保留，除了标点符号
+    """
+    # 每部分的最大长度
+    mid_length = max_length // 2
+
+    # 处理 URL 部分
+    url = re.sub(r'^https?://', '', url)  # 去掉协议部分
+    url_name = re.sub(r'[^a-zA-Z0-9]', '_', url)  # 非字母数字字符替换为下划线
+
+    # 处理 content 部分：保留中文、字母和数字，去除标点
+    content_name = re.sub(r'[^\w\u4e00-\u9fff]', '', content)  # 只保留中文、字母、数字
+
+    # 拼接文件名，限制长度
+    if content_name:
+        file_name = url_name[:mid_length] + "_" + content_name[:mid_length]
+    else:
+        file_name = url_name[:max_length]
+    return file_name
+
+def cal_md5(content):
+    content = str(content)
+    result = hashlib.md5(content.encode())
+    return result.hexdigest()
+
+def async_cache_decorator(func):
+    cache_path = "cache"
+    if not os.path.exists(cache_path):
+        os.mkdir(cache_path)
+
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        usecache = kwargs.get("usecache", True)
+        if "usecache" in kwargs:
+            del kwargs["usecache"]
+
+        if len(args) > 0:
+            if isinstance(args[0], (int, float, str, list, tuple, dict)):
+                key = str(args) + str(kwargs)
+            else:
+                key = str(args[1:]) + str(kwargs)
+        else:
+            key = str(args) + str(kwargs)
+
+        key_file = os.path.join(cache_path, cal_md5(key) + "_cache.pkl")
+
+        if os.path.exists(key_file) and usecache:
+            print(f"缓存命中，读取缓存文件: {key_file}")
+            with open(key_file, 'rb') as f:
+                result = pickle.load(f)
+                return result
+
+        # 使用 `await` 调用异步函数
+        result = await func(*args, **kwargs)
+
+        if isinstance(result, tuple) and result[0] == False:
+            print(f"函数 {func.__name__} 返回结果为 False, 不缓存")
+        else:
+            with open(key_file, 'wb') as f:
+                pickle.dump(result, f)
+            print(f"缓存未命中，结果缓存至文件: {key_file}")
+
+        return result
+
+    return wrapper
+
+def cache_decorator(func):
+    """
+    cache从文件中读取, 当func中存在usecache时，并且为False时，不使用缓存
+    Args:
+        func ():
+    Returns:
+    """
+    cache_path = "cache" #cache目录
+    if not os.path.exists(cache_path):
+        os.mkdir(cache_path)
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        # 将args和kwargs转换为哈希键， 当装饰类中的函数的时候，args的第一个参数是实例化的类，这会通常导致改变，我们不想检测它是否改变，那么就忽略它
+        usecache = kwargs.get("usecache", True)
+        if "usecache" in kwargs:
+            del kwargs["usecache"]
+        if len(args)> 0:
+            if isinstance(args[0],(int, float, str, list, tuple, dict)):
+                key = str(args) + str(kwargs)
+            else:
+                # 第1个参数以后的内容
+                key = str(args[1:]) + str(kwargs)
+        else:
+            key = str(args) + str(kwargs)
+        # 变成md5字符串
+        key_file = os.path.join(cache_path, cal_md5(key) + "_cache.pkl")
+        # 如果结果已缓存，则返回缓存的结果
+        if os.path.exists(key_file) and usecache:
+            # 去掉kwargs中的usecache
+            print(f"函数{func.__name__}被调用，缓存被命中，使用已缓存结果，对于参数{key}, 读取文件:{key_file}")
+            with open(key_file, 'rb') as f:
+                result = pickle.load(f)
+                return result
+        result = func(*args, **kwargs)
+        # 将结果缓存到文件中
+        # 如果返回的数据是一个元祖，并且第1个参数是False,说明这个函数报错了，那么就不缓存了，这是我们自己的一个设定
+        if isinstance(result, tuple) and result[0] == False:
+            print(f"函数{func.__name__}被调用，返回结果为False，对于参数{key}, 不缓存")
+        else:
+            with open(key_file, 'wb') as f:
+                pickle.dump(result, f)
+            print(f"函数{func.__name__}被调用，缓存未命中，结果被缓存，对于参数{key}, 写入文件:{key_file}")
+        return result
+
+    return wrapper

@@ -1,4 +1,5 @@
 accelerate
+neo4j
 aioboto3
 aiohttp
 graspologic
