@@ -15,6 +15,8 @@ from .utils import (
     pack_user_ass_to_openai_messages,
     split_string_by_multi_markers,
     truncate_list_by_token_size,
+    process_combine_contexts,
+    locate_json_string_body_from_string,
 )
 from .base import (
     BaseGraphStorage,
@@ -402,9 +404,10 @@ async def local_query(
     kw_prompt_temp = PROMPTS["keywords_extraction"]
     kw_prompt = kw_prompt_temp.format(query=query)
     result = await use_model_func(kw_prompt)
+    json_text = locate_json_string_body_from_string(result)
 
     try:
-        keywords_data = json.loads(result)
+        keywords_data = json.loads(json_text)
         keywords = keywords_data.get("low_level_keywords", [])
         keywords = ", ".join(keywords)
     except json.JSONDecodeError:
@@ -466,6 +469,7 @@ async def _build_local_query_context(
     query_param: QueryParam,
 ):
     results = await entities_vdb.query(query, top_k=query_param.top_k)
+
     if not len(results):
         return None
     node_datas = await asyncio.gather(
@@ -480,7 +484,7 @@ async def _build_local_query_context(
         {**n, "entity_name": k["entity_name"], "rank": d}
         for k, n, d in zip(results, node_datas, node_degrees)
         if n is not None
-    ]
+    ]  # what is this text_chunks_db doing.  dont remember it in airvx.  check the diagram.
     use_text_units = await _find_most_related_text_unit_from_entities(
         node_datas, query_param, text_chunks_db, knowledge_graph_inst
     )
@@ -558,46 +562,63 @@ async def _find_most_related_text_unit_from_entities(
         if not this_edges:
             continue
         all_one_hop_nodes.update([e[1] for e in this_edges])
+
     all_one_hop_nodes = list(all_one_hop_nodes)
     all_one_hop_nodes_data = await asyncio.gather(
         *[knowledge_graph_inst.get_node(e) for e in all_one_hop_nodes]
     )
+
+    # Add null check for node data
     all_one_hop_text_units_lookup = {
         k: set(split_string_by_multi_markers(v["source_id"], [GRAPH_FIELD_SEP]))
         for k, v in zip(all_one_hop_nodes, all_one_hop_nodes_data)
-        if v is not None
+        if v is not None and "source_id" in v  # Add source_id check
     }
+
     all_text_units_lookup = {}
     for index, (this_text_units, this_edges) in enumerate(zip(text_units, edges)):
         for c_id in this_text_units:
             if c_id in all_text_units_lookup:
                 continue
             relation_counts = 0
-            for e in this_edges:
-                if (
-                    e[1] in all_one_hop_text_units_lookup
-                    and c_id in all_one_hop_text_units_lookup[e[1]]
-                ):
-                    relation_counts += 1
-            all_text_units_lookup[c_id] = {
-                "data": await text_chunks_db.get_by_id(c_id),
-                "order": index,
-                "relation_counts": relation_counts,
-            }
-    if any([v is None for v in all_text_units_lookup.values()]):
-        logger.warning("Text chunks are missing, maybe the storage is damaged")
+            if this_edges:  # Add check for None edges
+                for e in this_edges:
+                    if (
+                        e[1] in all_one_hop_text_units_lookup
+                        and c_id in all_one_hop_text_units_lookup[e[1]]
+                    ):
+                        relation_counts += 1
+
+            chunk_data = await text_chunks_db.get_by_id(c_id)
+            if chunk_data is not None and "content" in chunk_data:  # Add content check
+                all_text_units_lookup[c_id] = {
+                    "data": chunk_data,
+                    "order": index,
+                    "relation_counts": relation_counts,
+                }
+
+    # Filter out None values and ensure data has content
     all_text_units = [
-        {"id": k, **v} for k, v in all_text_units_lookup.items() if v is not None
+        {"id": k, **v}
+        for k, v in all_text_units_lookup.items()
+        if v is not None and v.get("data") is not None and "content" in v["data"]
     ]
+
+    if not all_text_units:
+        logger.warning("No valid text units found")
+        return []
+
     all_text_units = sorted(
         all_text_units, key=lambda x: (x["order"], -x["relation_counts"])
     )
+
     all_text_units = truncate_list_by_token_size(
         all_text_units,
         key=lambda x: x["data"]["content"],
         max_token_size=query_param.max_token_for_text_unit,
     )
-    all_text_units: list[TextChunkSchema] = [t["data"] for t in all_text_units]
+
+    all_text_units = [t["data"] for t in all_text_units]
     return all_text_units
 
 
@@ -609,10 +630,16 @@ async def _find_most_related_edges_from_entities(
     all_related_edges = await asyncio.gather(
         *[knowledge_graph_inst.get_node_edges(dp["entity_name"]) for dp in node_datas]
     )
-    all_edges = set()
+    all_edges = []
+    seen = set()
+
     for this_edges in all_related_edges:
-        all_edges.update([tuple(sorted(e)) for e in this_edges])
-    all_edges = list(all_edges)
+        for e in this_edges:
+            sorted_edge = tuple(sorted(e))
+            if sorted_edge not in seen:
+                seen.add(sorted_edge)
+                all_edges.append(sorted_edge)
+
     all_edges_pack = await asyncio.gather(
         *[knowledge_graph_inst.get_edge(e[0], e[1]) for e in all_edges]
     )
@@ -650,9 +677,10 @@ async def global_query(
     kw_prompt_temp = PROMPTS["keywords_extraction"]
     kw_prompt = kw_prompt_temp.format(query=query)
     result = await use_model_func(kw_prompt)
+    json_text = locate_json_string_body_from_string(result)
 
     try:
-        keywords_data = json.loads(result)
+        keywords_data = json.loads(json_text)
         keywords = keywords_data.get("high_level_keywords", [])
         keywords = ", ".join(keywords)
     except json.JSONDecodeError:
@@ -811,10 +839,16 @@ async def _find_most_related_entities_from_relationships(
     query_param: QueryParam,
     knowledge_graph_inst: BaseGraphStorage,
 ):
-    entity_names = set()
+    entity_names = []
+    seen = set()
+
     for e in edge_datas:
-        entity_names.add(e["src_id"])
-        entity_names.add(e["tgt_id"])
+        if e["src_id"] not in seen:
+            entity_names.append(e["src_id"])
+            seen.add(e["src_id"])
+        if e["tgt_id"] not in seen:
+            entity_names.append(e["tgt_id"])
+            seen.add(e["tgt_id"])
 
     node_datas = await asyncio.gather(
         *[knowledge_graph_inst.get_node(entity_name) for entity_name in entity_names]
@@ -891,8 +925,9 @@ async def hybrid_query(
     kw_prompt = kw_prompt_temp.format(query=query)
 
     result = await use_model_func(kw_prompt)
+    json_text = locate_json_string_body_from_string(result)
     try:
-        keywords_data = json.loads(result)
+        keywords_data = json.loads(json_text)
         hl_keywords = keywords_data.get("high_level_keywords", [])
         ll_keywords = keywords_data.get("low_level_keywords", [])
         hl_keywords = ", ".join(hl_keywords)
@@ -906,7 +941,6 @@ async def hybrid_query(
                 .strip()
             )
             result = "{" + result.split("{")[1].split("}")[0] + "}"
-
             keywords_data = json.loads(result)
             hl_keywords = keywords_data.get("high_level_keywords", [])
             ll_keywords = keywords_data.get("low_level_keywords", [])
@@ -935,6 +969,7 @@ async def hybrid_query(
             text_chunks_db,
             query_param,
         )
+
     context = combine_contexts(high_level_context, low_level_context)
 
     if query_param.only_need_context:
@@ -1002,35 +1037,30 @@ def combine_contexts(high_level_context, low_level_context):
         ll_entities, ll_relationships, ll_sources = extract_sections(low_level_context)
 
     # Combine and deduplicate the entities
-    combined_entities_set = set(
-        filter(None, hl_entities.strip().split("\n") + ll_entities.strip().split("\n"))
-    )
-    combined_entities = "\n".join(combined_entities_set)
+    combined_entities = process_combine_contexts(hl_entities, ll_entities)
 
     # Combine and deduplicate the relationships
-    combined_relationships_set = set(
-        filter(
-            None,
-            hl_relationships.strip().split("\n") + ll_relationships.strip().split("\n"),
-        )
+    combined_relationships = process_combine_contexts(
+        hl_relationships, ll_relationships
     )
-    combined_relationships = "\n".join(combined_relationships_set)
 
     # Combine and deduplicate the sources
-    combined_sources_set = set(
-        filter(None, hl_sources.strip().split("\n") + ll_sources.strip().split("\n"))
-    )
-    combined_sources = "\n".join(combined_sources_set)
+    combined_sources = process_combine_contexts(hl_sources, ll_sources)
 
     # Format the combined context
     return f"""
 -----Entities-----
 ```csv
 {combined_entities}
+```
 -----Relationships-----
+```csv
 {combined_relationships}
+```
 -----Sources-----
+```csv
 {combined_sources}
+```
 """
 
 
