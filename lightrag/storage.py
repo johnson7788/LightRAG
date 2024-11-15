@@ -67,9 +67,14 @@ class NanoVectorDBStorage(BaseVectorStorage):
             self.global_config["working_dir"], f"vdb_{self.namespace}.json"
         )
         self._max_batch_size = self.global_config["embedding_batch_num"]
-        self._client = NanoVectorDB(
-            self.embedding_func.embedding_dim, storage_file=self._client_file_name
-        )
+        try:
+            self._client = NanoVectorDB(
+                self.embedding_func.embedding_dim, storage_file=self._client_file_name
+            )
+        except Exception as e:
+            if "Embedding dim mismatch" in str(e):
+                print(f"错误❌: 已有数据和最新的嵌入模型之间的嵌入维度不一致，请删除已有旧数据，然后重新进行嵌入")
+                raise e
         self.cosine_better_than_threshold = self.global_config.get(
             "cosine_better_than_threshold", self.cosine_better_than_threshold
         )
