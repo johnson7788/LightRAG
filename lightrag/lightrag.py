@@ -41,7 +41,7 @@ from .storage import (
 )
 
 from .kg.neo4j_impl import Neo4JStorage
-
+# 暂时不需要OracleDB吧
 from .kg.oracle_impl import OracleKVStorage, OracleGraphStorage, OracleVectorDBStorage
 
 # future KG integrations
@@ -132,17 +132,18 @@ class LightRAG:
         if not os.path.exists(self.working_dir):
             logger.info(f"Creating working directory {self.working_dir}")
             os.makedirs(self.working_dir)
-        # 处理进度
-        self.processing_indicator = self.key_string_value_json_storage_cls(
-            namespace="processing", global_config=asdict(self)
-        )
-        self.full_docs = self.key_string_value_json_storage_cls(
-            namespace="full_docs", global_config=asdict(self))
         # @TODO: should move all storage setup here to leverage initial start params attached to self.
-
         self.key_string_value_json_storage_cls: Type[BaseKVStorage] = (
             self._get_storage_class()[self.kv_storage]
         )
+        # 处理进度和文档相关，自己添加的
+        self.processing_indicator = self.key_string_value_json_storage_cls(
+            namespace="processing", global_config=asdict(self),embedding_func=None
+        )
+        self.full_docs = self.key_string_value_json_storage_cls(
+            namespace="full_docs", global_config=asdict(self), embedding_func=None
+        )
+
         self.vector_db_storage_cls: Type[BaseVectorStorage] = self._get_storage_class()[
             self.vector_storage
         ]
@@ -250,11 +251,27 @@ class LightRAG:
             # "ArangoDBStorage": ArangoDBStorage
         }
 
-    def insert(self, string_or_strings):
-        loop = always_get_an_event_loop()
-        return loop.run_until_complete(self.ainsert(string_or_strings))
 
-    async def ainsert(self, string_or_strings):
+    def insert(self, string_or_strings, file_names=None):
+        """
+        :param string_or_strings: 要插入的数据
+        :param file_name: str or list,文件名
+        """
+        loop = always_get_an_event_loop()
+        return loop.run_until_complete(self.ainsert(string_or_strings,file_names))
+
+
+    async def ainsert(self, string_or_strings, file_names=None):
+        """
+        :param string_or_strings: 要插入的数据
+        :param file_names: str or list,文件名
+        """
+        if isinstance(string_or_strings, str) and not file_names:
+            file_names = ["doc-unknown"]
+        if isinstance(string_or_strings, list) and not file_names:
+            file_names = [f"doc-unknown" for i in range(len(string_or_strings))]
+        if isinstance(file_names, str):
+            file_names = [file_names]
         update_storage = False
         try:
             if isinstance(string_or_strings, str):
