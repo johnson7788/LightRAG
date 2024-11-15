@@ -217,25 +217,6 @@ class LightRAG:
             )
         )
 
-    def insert(self, string_or_strings, file_names=None):
-        """
-        :param string_or_strings: 要插入的数据
-        :param file_name: str or list,文件名
-        """
-        loop = always_get_an_event_loop()
-        return loop.run_until_complete(self.ainsert(string_or_strings,file_names))
-
-    async def ainsert(self, string_or_strings, file_names=None):
-        """
-        :param string_or_strings: 要插入的数据
-        :param file_names: str or list,文件名
-        """
-        if isinstance(string_or_strings, str) and not file_names:
-            file_names = ["doc-unknown"]
-        if isinstance(string_or_strings, list) and not file_names:
-            file_names = [f"doc-unknown" for i in range(len(string_or_strings))]
-        if isinstance(file_names, str):
-            file_names = [file_names]
     def _get_storage_class(self) -> Type[BaseGraphStorage]:
         return {
             # kv storage
@@ -263,7 +244,7 @@ class LightRAG:
 
     async def ainsert(self, string_or_strings, file_names=None):
         """
-        :param string_or_strings: 要插入的数据
+        :param string_or_strings: 要插入的数据, str or list
         :param file_names: str or list,文件名
         """
         if isinstance(string_or_strings, str) and not file_names:
@@ -442,3 +423,70 @@ class LightRAG:
                 continue
             tasks.append(cast(StorageNameSpace, storage_inst).index_done_callback())
         await asyncio.gather(*tasks)
+
+    async def ainsert_only_naive(self, string_or_strings):
+        """
+        #只插入到向量text_chunks和chunks_vdb，只进行向量搜索
+        :param string_or_strings: 要插入的数据, str or list
+        :param file_names: str or list,文件名
+        """
+        update_storage = False
+        try:
+            if isinstance(string_or_strings, str):
+                string_or_strings = [string_or_strings]
+
+            new_docs = {
+                compute_mdhash_id(c.strip(), prefix="doc-"): {"content": c.strip()}
+                for c in string_or_strings
+            }
+            _add_doc_keys = await self.full_docs.filter_keys(list(new_docs.keys()))
+            new_docs = {k: v for k, v in new_docs.items() if k in _add_doc_keys}
+            if not len(new_docs):
+                logger.warning("All docs are already in the storage")
+                return
+            update_storage = True
+            logger.info(f"[New Docs] inserting {len(new_docs)} docs")
+
+            inserting_chunks = {}
+            for doc_key, doc in new_docs.items():
+                chunks = {
+                    compute_mdhash_id(dp["content"], prefix="chunk-"): {
+                        **dp,
+                        "full_doc_id": doc_key,
+                    }
+                    for dp in chunking_by_token_size(
+                        doc["content"],
+                        overlap_token_size=self.chunk_overlap_token_size,
+                        max_token_size=self.chunk_token_size,
+                        tiktoken_model=self.tiktoken_model_name,
+                    )
+                }
+                inserting_chunks.update(chunks)
+            _add_chunk_keys = await self.text_chunks.filter_keys(
+                list(inserting_chunks.keys())
+            )
+            inserting_chunks = {
+                k: v for k, v in inserting_chunks.items() if k in _add_chunk_keys
+            }
+            if not len(inserting_chunks):
+                logger.warning("All chunks are already in the storage")
+                return
+            logger.info(f"[New Chunks] inserting {len(inserting_chunks)} chunks")
+
+            await self.chunks_vdb.upsert(inserting_chunks)
+            await self.text_chunks.upsert(inserting_chunks)
+        finally:
+            if update_storage:
+                await self._insert_done()
+
+    async def _insert_done_only_naive(self):
+        tasks = []
+        for storage_inst in [
+            self.text_chunks,
+            self.chunks_vdb,
+        ]:
+            if storage_inst is None:
+                continue
+            tasks.append(cast(StorageNameSpace, storage_inst).index_done_callback())
+        await asyncio.gather(*tasks)
+
