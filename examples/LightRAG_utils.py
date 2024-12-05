@@ -19,6 +19,8 @@ from firecrawl import FirecrawlApp   #pip install firecrawl-py
 import tika
 from tika import parser as tikaParser
 TIKA_SERVER_JAR = "file:////media/wac/backup/john/johnson/LightRAG/examples/tika-server.jar"
+if not os.path.exists(TIKA_SERVER_JAR):
+    TIKA_SERVER_JAR = "file:////Users/admin/git/tika/tika-server-standard-2.9.0-bin/tika-server.jar"
 os.environ['TIKA_SERVER_JAR'] = TIKA_SERVER_JAR
 
 class MyFirecrawl():
@@ -218,21 +220,25 @@ def async_cache_decorator(func):
         if "usecache" in kwargs:
             del kwargs["usecache"]
 
-        if len(args) > 0:
-            if isinstance(args[0], (int, float, str, list, tuple, dict)):
-                key = str(args) + str(kwargs)
+        if len(args)> 0:
+            if isinstance(args[0],(int, float, str, list, tuple, dict)):
+                key = str(args) + str(kwargs) + func.__name__
             else:
-                key = str(args[1:]) + str(kwargs)
+                # 第1个参数以后的内容
+                key = str(args[1:]) + str(kwargs) + func.__name__
         else:
-            key = str(args) + str(kwargs)
+            key = str(args) + str(kwargs) + func.__name__
 
         key_file = os.path.join(cache_path, cal_md5(key) + "_cache.pkl")
 
         if os.path.exists(key_file) and usecache:
             print(f"缓存命中，读取缓存文件: {key_file}")
-            with open(key_file, 'rb') as f:
-                result = pickle.load(f)
-                return result
+            try:
+                with open(key_file, 'rb') as f:
+                    result = pickle.load(f)
+                    return result
+            except Exception as e:
+                print(f"函数{func.__name__}被调用，缓存被命中，读取文件:{key_file}失败，错误信息:{e}")
 
         # 使用 `await` 调用异步函数
         result = await func(*args, **kwargs)
@@ -267,21 +273,24 @@ def cache_decorator(func):
             del kwargs["usecache"]
         if len(args)> 0:
             if isinstance(args[0],(int, float, str, list, tuple, dict)):
-                key = str(args) + str(kwargs)
+                key = str(args) + str(kwargs) + func.__name__
             else:
                 # 第1个参数以后的内容
-                key = str(args[1:]) + str(kwargs)
+                key = str(args[1:]) + str(kwargs) + func.__name__
         else:
-            key = str(args) + str(kwargs)
+            key = str(args) + str(kwargs) + func.__name__
         # 变成md5字符串
         key_file = os.path.join(cache_path, cal_md5(key) + "_cache.pkl")
         # 如果结果已缓存，则返回缓存的结果
         if os.path.exists(key_file) and usecache:
             # 去掉kwargs中的usecache
             print(f"函数{func.__name__}被调用，缓存被命中，使用已缓存结果，对于参数{key}, 读取文件:{key_file}")
-            with open(key_file, 'rb') as f:
-                result = pickle.load(f)
-                return result
+            try:
+                with open(key_file, 'rb') as f:
+                    result = pickle.load(f)
+                    return result
+            except Exception as e:
+                print(f"函数{func.__name__}被调用，缓存被命中，读取文件:{key_file}失败，错误信息:{e}")
         result = func(*args, **kwargs)
         # 将结果缓存到文件中
         # 如果返回的数据是一个元祖，并且第1个参数是False,说明这个函数报错了，那么就不缓存了，这是我们自己的一个设定

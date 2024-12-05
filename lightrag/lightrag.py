@@ -257,13 +257,12 @@ class LightRAG:
         try:
             if isinstance(string_or_strings, str):
                 string_or_strings = [string_or_strings]
-
-            new_docs = {
-                compute_mdhash_id(c.strip(), prefix="doc-"): {"content": c.strip()}
-                for c in string_or_strings
-            }
-            _add_doc_keys = await self.full_docs.filter_keys(list(new_docs.keys()))
-            new_docs = {k: v for k, v in new_docs.items() if k in _add_doc_keys}
+            new_docs = {} #文档,加上文件名称,如果用户没有传入文件名呢，最好还是用内容作为key
+            for content, file_name in zip(string_or_strings, file_names):
+                doc_key = compute_mdhash_id(content, prefix="doc-")
+                new_docs[doc_key] = {"content": content, "file_name": file_name}
+            _add_doc_keys = await self.full_docs.filter_keys(list(new_docs.keys())) # 获取已经存在的文档
+            new_docs = {k: v for k, v in new_docs.items() if k in _add_doc_keys} # 过滤掉已经存在的文档
             if not len(new_docs):
                 logger.warning("All docs are already in the storage")
                 return
@@ -275,7 +274,7 @@ class LightRAG:
                 chunks = {
                     compute_mdhash_id(dp["content"], prefix="chunk-"): {
                         **dp,
-                        "full_doc_id": doc_key,
+                        "full_doc_id": doc_key, #文档的名称
                     }
                     for dp in chunking_by_token_size(
                         doc["content"],
