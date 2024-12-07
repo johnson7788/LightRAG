@@ -7,6 +7,7 @@
 
 import os
 import re
+import string
 import json
 import hashlib
 import os
@@ -53,6 +54,16 @@ class MyFirecrawl():
         """
         crape_result = self.app.scrape_url(url, params={'formats': ['markdown', 'html']})
         return crape_result
+
+def is_digits_and_punctuation(text):
+    # 获取所有数字和标点符号
+    allowed_chars = string.digits + string.punctuation
+
+    # 使用正则表达式判断字符串是否只包含这些字符
+    pattern = f'^[{re.escape(allowed_chars)}]*$'
+
+    # 使用 fullmatch 来判断整个字符串是否符合规则
+    return bool(re.fullmatch(pattern, text))
 
 def read_file_content(file_path):
     assert os.path.exists(file_path), f"给定文件不存在: {file_path}"

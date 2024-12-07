@@ -254,6 +254,8 @@ class LightRAG:
         if isinstance(file_names, str):
             file_names = [file_names]
         update_storage = False
+        finished_docs = {name: "Processing" for name in file_names}
+        await self.processing_indicator.upsert(finished_docs) #更新为正在处理中
         try:
             if isinstance(string_or_strings, str):
                 string_or_strings = [string_or_strings]
