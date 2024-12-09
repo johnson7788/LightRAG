@@ -316,7 +316,8 @@ class LightRAG:
             await self.text_chunks.upsert(inserting_chunks)
             # 文件完成的记录
             finished_docs = {name: "Done" for name in file_names}
-            await self.processing_indicator.upsert(finished_docs)
+            await self.processing_indicator.update_data(finished_docs)
+            logger.info(f"更新了{file_names}为Done状态")
         finally:
             if update_storage:
                 await self._insert_done()
