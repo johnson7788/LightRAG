@@ -2,10 +2,9 @@ accelerate
 neo4j
 aioboto3
 aiohttp
-
 # database packages
 graspologic
-hnswlib
+# hnswlib
 nano-vectordb
 neo4j
 networkx
@@ -21,3 +20,9 @@ tiktoken
 torch
 transformers
 xxhash
+
+firecrawl
+tika
+python-multipart
+uvicorn
+fastapi
