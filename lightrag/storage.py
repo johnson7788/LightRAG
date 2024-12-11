@@ -71,7 +71,7 @@ class JsonKVStorage(BaseKVStorage):
 
 @dataclass
 class NanoVectorDBStorage(BaseVectorStorage):
-    cosine_better_than_threshold: float = 0.2
+    cosine_better_than_threshold: float = 0.05
 
     def __post_init__(self):
         self._client_file_name = os.path.join(
@@ -116,13 +116,15 @@ class NanoVectorDBStorage(BaseVectorStorage):
         results = self._client.upsert(datas=list_data)
         return results
 
-    async def query(self, query: str, top_k=5):
+    async def query(self, query: str, top_k=5, better_than_threshold=None):
         embedding = await self.embedding_func([query])
         embedding = embedding[0]
+        if better_than_threshold is None:
+            better_than_threshold = self.cosine_better_than_threshold
         results = self._client.query(
             query=embedding,
             top_k=top_k,
-            better_than_threshold=self.cosine_better_than_threshold,
+            better_than_threshold=better_than_threshold,
         )
         results = [
             {**dp, "id": dp["__id__"], "distance": dp["__metrics__"]} for dp in results
