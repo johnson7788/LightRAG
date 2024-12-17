@@ -17,6 +17,7 @@ from functools import wraps
 from lightrag.utils import xml_to_json
 from neo4j import GraphDatabase
 from firecrawl import FirecrawlApp   #pip install firecrawl-py
+import fitz  # PyMuPDF
 import tika
 from tika import parser as tikaParser
 TIKA_SERVER_JAR = "file:////media/wac/backup/john/johnson/LightRAG/examples/tika-server.jar"
@@ -74,6 +75,49 @@ def read_file_content(file_path):
     content_text = parsed["content"]
     content = content_text.split("\n")
     return content
+
+def average_pdf_text_num(pdf_path):
+    """
+    计算PDF文档所有页面的平均文字数量
+    
+    Args:
+        pdf_path (str): PDF文件路径
+    
+    Returns:
+        float: 平均每页文字数量
+    """
+    doc = fitz.open(pdf_path)
+    total_text_length = 0
+    page_count = len(doc)
+    
+    for page_num in range(page_count):
+        page = doc[page_num]
+        text = page.get_text()
+        total_text_length += len(text)
+    
+    doc.close()  # 关闭文档
+    average_text_num = total_text_length / page_count if page_count > 0 else 0
+    return average_text_num
+
+def analyze_pdf_page(pdf_path, page_number):
+    doc = fitz.open(pdf_path)
+    page = doc[page_number - 1]  # 页码从0开始
+
+    # 提取文字
+    text = page.get_text()
+    text_length = len(text)
+
+    # 提取图片
+    images = page.get_images(full=True)
+    image_count = len(images)
+
+    doc.close()
+    
+    return {
+        "text_length": text_length,
+        "image_count": image_count,
+        "is_image_dominant": image_count > 0 and text_length < 100  # 简单判断
+    }
 
 
 def convert_xml_to_json(xml_path):

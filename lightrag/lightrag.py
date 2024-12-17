@@ -476,7 +476,7 @@ class LightRAG:
             logger.info(f"[New Chunks] inserting {len(inserting_chunks)} chunks")
 
             await self.chunks_vdb.upsert(inserting_chunks)
-            await self.text_chunks.upsert(inserting_chunks)
+            await self.text_chunks.upsert(iwnserting_chunks)
         finally:
             if update_storage:
                 await self._insert_done()
