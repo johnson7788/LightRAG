@@ -16,14 +16,41 @@ import asyncio
 from functools import wraps
 from lightrag.utils import xml_to_json
 from neo4j import GraphDatabase
+from lingua import Language, LanguageDetectorBuilder  #pip install lingua-language-detector
 from firecrawl import FirecrawlApp   #pip install firecrawl-py
 import fitz  # PyMuPDF
 import tika
 from tika import parser as tikaParser
+tika_path = "/media/wac/backup/john/johnson/LightRAG/examples/tika-server.jar"
 TIKA_SERVER_JAR = "file:////media/wac/backup/john/johnson/LightRAG/examples/tika-server.jar"
-if not os.path.exists(TIKA_SERVER_JAR):
+if not os.path.exists(tika_path):
     TIKA_SERVER_JAR = "file:////Users/admin/git/tika/tika-server-standard-2.9.0-bin/tika-server.jar"
 os.environ['TIKA_SERVER_JAR'] = TIKA_SERVER_JAR
+
+def detect_language(content):
+    """
+    检测文本语言
+    Args:
+        content ():
+        英语，法语，德语，西班牙，中文，日语，韩语
+    Returns:
+    """
+    language_pair = {
+        Language.ENGLISH: "english",
+        Language.FRENCH: "french",
+        Language.GERMAN: "german",
+        Language.SPANISH: "spanish",
+        Language.CHINESE: "chinese",
+        Language.JAPANESE: "japanese",
+        Language.KOREAN: "korean",
+    }
+    languages = [Language.ENGLISH, Language.FRENCH, Language.GERMAN, Language.SPANISH, Language.CHINESE,Language.JAPANESE,Language.KOREAN]
+    detector = LanguageDetectorBuilder.from_languages(*languages).build()
+    language = detector.detect_language_of(content)
+    if language not in language_pair:
+        print(f"输入数据{content}被检测成未知的语言，请修改language_pair进行兼容: {language}")
+    language_str = language_pair.get(language, "english")
+    return language_str
 
 class MyFirecrawl():
     def __init__(self, api_key="EXAMPLE", api_url="http://127.0.0.1:3002"):

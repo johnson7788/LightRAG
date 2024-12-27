@@ -397,6 +397,7 @@ async def local_query(
     text_chunks_db: BaseKVStorage[TextChunkSchema],
     query_param: QueryParam,
     global_config: dict,
+    history: list[dict] = [],
 ) -> str:
     context = None
     use_model_func = global_config["llm_model_func"]
@@ -446,6 +447,7 @@ async def local_query(
     response = await use_model_func(
         query,
         system_prompt=sys_prompt,
+        history_messages=history
     )
     if len(response) > len(sys_prompt):
         response = (
@@ -670,6 +672,7 @@ async def global_query(
     text_chunks_db: BaseKVStorage[TextChunkSchema],
     query_param: QueryParam,
     global_config: dict,
+    history: list[dict] = [],
 ) -> str:
     context = None
     use_model_func = global_config["llm_model_func"]
@@ -723,6 +726,7 @@ async def global_query(
     response = await use_model_func(
         query,
         system_prompt=sys_prompt,
+        history_messages=history
     )
     if len(response) > len(sys_prompt):
         response = (
@@ -916,6 +920,7 @@ async def hybrid_query(
     text_chunks_db: BaseKVStorage[TextChunkSchema],
     query_param: QueryParam,
     global_config: dict,
+    history: list[dict] = [],
 ) -> str:
     low_level_context = None
     high_level_context = None
@@ -984,6 +989,7 @@ async def hybrid_query(
     response = await use_model_func(
         query,
         system_prompt=sys_prompt,
+        history_messages=history
     )
     if len(response) > len(sys_prompt):
         response = (
@@ -1070,6 +1076,7 @@ async def naive_query(
     text_chunks_db: BaseKVStorage[TextChunkSchema],
     query_param: QueryParam,
     global_config: dict,
+    history: list[dict] = [],
 ):
     use_model_func = global_config["llm_model_func"]
     results = await chunks_vdb.query(query, top_k=query_param.top_k)
@@ -1094,6 +1101,7 @@ async def naive_query(
     response = await use_model_func(
         query,
         system_prompt=sys_prompt,
+        history_messages=history
     )
 
     if len(response) > len(sys_prompt):

@@ -343,7 +343,8 @@ class LightRAG:
         loop = always_get_an_event_loop()
         return loop.run_until_complete(self.aquery(query, param))
 
-    async def aquery(self, query: str, param: QueryParam = QueryParam()):
+    async def aquery(self, query: str, param: QueryParam = QueryParam(), history:list = []):
+        # history: 历史聊天对话
         if param.mode == "local":
             response = await local_query(
                 query,
@@ -353,6 +354,7 @@ class LightRAG:
                 self.text_chunks,
                 param,
                 asdict(self),
+                history
             )
         elif param.mode == "global":
             response = await global_query(
@@ -363,6 +365,7 @@ class LightRAG:
                 self.text_chunks,
                 param,
                 asdict(self),
+                history
             )
         elif param.mode == "hybrid":
             response = await hybrid_query(
@@ -373,6 +376,7 @@ class LightRAG:
                 self.text_chunks,
                 param,
                 asdict(self),
+                history
             )
         elif param.mode == "naive":
             response = await naive_query(
@@ -381,6 +385,7 @@ class LightRAG:
                 self.text_chunks,
                 param,
                 asdict(self),
+                history
             )
         else:
             raise ValueError(f"Unknown mode {param.mode}")
