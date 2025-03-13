@@ -500,7 +500,7 @@ async def _build_local_query_context(
     for i, n in enumerate(node_datas):
         entites_section_list.append(
             [
-                i,
+                # i,  #去掉索引
                 n["entity_name"],
                 n.get("entity_type", "UNKNOWN"),
                 n.get("description", "UNKNOWN"),
@@ -515,7 +515,7 @@ async def _build_local_query_context(
     for i, e in enumerate(use_relations):
         relations_section_list.append(
             [
-                i,
+                # i, #去掉索引
                 e["src_tgt"][0],
                 e["src_tgt"][1],
                 e["description"],
@@ -793,7 +793,7 @@ async def _build_global_query_context(
     for i, e in enumerate(edge_datas):
         relations_section_list.append(
             [
-                i,
+                # i,  #注释掉索引
                 e["src_id"],
                 e["tgt_id"],
                 e["description"],
@@ -808,7 +808,7 @@ async def _build_global_query_context(
     for i, n in enumerate(use_entities):
         entites_section_list.append(
             [
-                i,
+                # i,
                 n["entity_name"],
                 n.get("entity_type", "UNKNOWN"),
                 n.get("description", "UNKNOWN"),

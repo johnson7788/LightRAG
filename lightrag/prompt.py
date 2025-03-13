@@ -163,7 +163,7 @@ Do not include information where the supporting evidence for it is not provided.
 
 {context_data}
 
-Add sections and commentary to the response as appropriate for the length and format. Style the response in markdown.
+Add sections to the response as appropriate for the length and format. Style the response in markdown.
 """
 
 PROMPTS["keywords_extraction"] = """---Role---
@@ -241,5 +241,5 @@ Do not include information where the supporting evidence for it is not provided.
 
 {content_data}
 
-Add sections and commentary to the response as appropriate for the length and format. Style the response in markdown.
+Add sections to the response as appropriate for the length and format. Style the response in markdown.
 """
